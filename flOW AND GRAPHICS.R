@@ -65,3 +65,10 @@ ex = data.frame(a = c(rep(NA,10),1:10), b = sample(letters, 20, replace = F))
 
 
 ex %>% arrange(is.na(a))
+
+
+flights %>% arrange(flight_len = dep_time - arr_time)
+
+flights %>% select(starts_with("time"))
+
+flights %>% rename(timing_hour = time_hour) %>% select(contains("hour"))
