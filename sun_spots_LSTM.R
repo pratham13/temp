@@ -22,6 +22,8 @@ jj = function(x, option){
   
 }
 
+map_dbl(train[,-1], c(mean, median))
+
 multi.func = function(x){
   ets_f = ets(x)
   arima_f = auto.arima(x)
