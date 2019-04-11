@@ -1,31 +1,9 @@
 
 # forecasting by various methods Analytics Vidhya -------------------------
-library(tidyverse)
-library(glue)
-library(forcats)
 
-# Time Series
-library(timetk)
-library(tidyquant)
-library(tibbletime)
-
-# Visualization
-library(cowplot)
-
-# Preprocessing
-library(recipes)
-
-# Sampling / Accuracy
-library(rsample)
-library(yardstick) 
-
-# Modeling
-library(keras)
-library(kerasR)
-library(tfruns)
-library(ggplot2)
-library(forecast)
-library(thief)
+if (!require("pacman")) install.packages("pacman")
+p_load('tidyverse', 'glue', 'forcats','timetk','tidyquant', 'tibbletime', 'cowplot', 'recipes',
+       'rsample', 'yardstick', ' keras', 'kerasR', 'tfruns', 'ggplot2', 'forecast', 'thief','data.table')
 
 
 data = fread("NSE-TATAGLOBAL11.CSV") 
@@ -90,6 +68,7 @@ p_title <- ggdraw() +
 plot_grid(p_title, p1, p2, ncol = 1, rel_heights = c(0.1, 1, 1))
 
 # get the ACF values for data
+
 tidy_acf <- function(data, value, lags = 0:20) {
   
   value_expr <- enquo(value)
@@ -112,3 +91,118 @@ max_lag <- 12 * 50
 
 sun_spots %>%
   tidy_acf(value, lags = 0:max_lag)
+
+# to see if high correlation exists beyond 40 years
+
+sun_spots %>%
+  tidy_acf(value, lags = 0:max_lag) %>%
+  ggplot(aes(lag, acf)) +
+  geom_segment(aes(xend = lag, yend = 0), color = palette_light()[[1]]) +
+  geom_vline(xintercept = 120, size = 3, color = palette_light()[[2]]) +
+  annotate("text", label = "10 Year Mark", x = 130, y = 0.8, 
+           color = palette_light()[[2]], size = 6, hjust = 0) +
+  theme_tq() +
+  labs(title = "ACF: Sunspots")
+
+# use above 120 month mark for autocorrelation
+
+sun_spots %>%
+  tidy_acf(value, lags = 115:135) %>%
+  ggplot(aes(lag, acf)) +
+  geom_vline(xintercept = 120, size = 3, color = palette_light()[[2]]) +
+  geom_segment(aes(xend = lag, yend = 0), color = palette_light()[[1]]) +
+  geom_point(color = palette_light()[[1]], size = 2) +
+  geom_label(aes(label = acf %>% round(2)), vjust = -1,
+             color = palette_light()[[1]]) +
+  annotate("text", label = "10 Year Mark", x = 121, y = 0.8, 
+           color = palette_light()[[2]], size = 5, hjust = 0) +
+  theme_tq_green(base_size =15) +
+  labs(title = "ACF: Sunspots",
+       subtitle = "Zoomed in on Lags 115 to 135")
+
+# filter for optimal lag setting
+
+optimal_lag_setting <- sun_spots %>%
+  tidy_acf(value, lags = 115:135) %>%
+  filter(acf == max(acf)) %>%
+  pull(lag)
+
+optimal_lag_setting
+
+# use of rsample package for training and testing time series data
+install.packages("rsample", install.dependencies =T)
+library(rsample)
+
+periods_train <- 12 * 50
+periods_test  <- 12 * 10
+skip_span     <- 12 * 20
+
+rolling_origin_resamples <- rolling_origin(
+  sun_spots,
+  initial    = periods_train,
+  assess     = periods_test,
+  cumulative = FALSE,
+  skip       = skip_span
+)
+
+rolling_origin_resamples
+
+# plot the sampling for back testing
+# Plotting function for a single split
+
+plot_split <- function(split, expand_y_axis = TRUE, alpha = 1, size = 1, base_size = 14) {
+  
+  # Manipulate data
+  train_tbl <- training(split) %>%
+    add_column(key = "training") 
+  
+  test_tbl  <- testing(split) %>%
+    add_column(key = "testing") 
+  
+  data_manipulated <- bind_rows(train_tbl, test_tbl) %>%
+    as_tbl_time(index = index) %>%
+    mutate(key = fct_relevel(key, "training", "testing"))
+  
+  # Collect attributes
+  train_time_summary <- train_tbl %>%
+    tk_index() %>%
+    tk_get_timeseries_summary()
+  
+  test_time_summary <- test_tbl %>%
+    tk_index() %>%
+    tk_get_timeseries_summary()
+  
+  # Visualize
+  g <- data_manipulated %>%
+    ggplot(aes(x = index, y = value, color = key)) +
+    geom_line(size = size, alpha = alpha) +
+    theme_tq(base_size = base_size) +
+    scale_color_tq() +
+    labs(
+      title    = glue("Split: {split$id}"),
+      subtitle = glue("{train_time_summary$start} to {test_time_summary$end}"),
+      y = "", x = ""
+    ) +
+    theme(legend.position = "none") 
+  
+  if (expand_y_axis) {
+    
+    sun_spots_time_summary <- sun_spots %>% 
+      tk_index() %>% 
+      tk_get_timeseries_summary()
+    
+    g <- g +
+      scale_x_date(limits = c(sun_spots_time_summary$start, 
+                              sun_spots_time_summary$end))
+  }
+  
+  return(g)
+}
+
+rolling_origin_resamples$splits[[1]] %>%
+  plot_split(expand_y_axis = TRUE) +
+  theme(legend.position = "bottom")
+
+
+
+
