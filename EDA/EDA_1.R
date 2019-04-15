@@ -67,5 +67,19 @@ diamonds %>% filter(between(price,1000,15000)) %>%
 # study of covariance
   ggplot(data = diamonds, mapping = aes(x = price)) + 
     geom_freqpoly(mapping = aes(colour = cut), binwidth = 500) + facet_wrap(~price)
+  
+  
+# getting the relationship between cut & carat
+  
+  library(modelr)
+  
+  mod <- lm(log(price) ~ log(carat), data = diamonds)
+  
+  diamonds2 <- diamonds %>% 
+    add_residuals(mod) %>% 
+    mutate(resid = exp(resid))
+  
+  ggplot(data = diamonds2) + 
+    geom_point(mapping = aes(x = carat, y = resid))
  
   
